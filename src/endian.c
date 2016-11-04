@@ -3,7 +3,7 @@
    *
    *  File Name: endian.c
    *
-   *  Purpose: Defines routines that are useful in endian conversions 
+   *  Purpose: Defines routines that are useful in endian conversions
    *
    */
 
@@ -64,4 +64,3 @@ void ntoh_pkt_RT_UPDATE (struct pkt_RT_UPDATE *recv_upd) {
 	  }
 
 }
-

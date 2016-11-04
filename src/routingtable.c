@@ -14,9 +14,7 @@ void InitRoutingTbl(struct pkt_INIT_RESPONSE *res, int myID) {
   numRoutes = res->no_nbr + 1;
 
   // Initialize Self Routes
-  routingTable[0].dest_id = myID;
-  routingTable[0].next_hop = myID;
-  routingTable[0].cost = 0;
+  updateEntry(0, myID, myID, 0);
 
   int i;
   for (i = 1; i < numRoutes; i++) {
