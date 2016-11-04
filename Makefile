@@ -1,6 +1,9 @@
 CFLAGS = -g -Wall
 CC = gcc
 
+SRC = src/
+TEST = test/
+
 # change based on type of router to be built
 # value can be either DISTVECTOR or PATHVECTOR
 ROUTERMODE = DISTVECTOR
@@ -16,17 +19,17 @@ endif
 
 all : router
 
-endian.o   :   ne.h endian.c
-	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c endian.c
+endian.o   :   $(SRC)ne.h $(SRC)endian.c
+	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c $(SRC)endian.c
 
-routingtable.o   :   ne.h routingtable.c
-	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c routingtable.c
+routingtable.o   :   $(SRC)ne.h $(SRC)routingtable.c
+	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c $(SRC)routingtable.c
 
-router  :   endian.o routingtable.o router.c
-	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) endian.o routingtable.o router.c -o router -lnsl $(SOCKETLIB)
+router  :   endian.o routingtable.o $(SRC)router.c
+	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) endian.o routingtable.o $(SRC)router.c -o router -lnsl $(SOCKETLIB)
 
-unit-test  : routingtable.o unit-test.c
-	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o unit-test.c -o unit-test -lnsl $(SOCKETLIB)
+unit-test  : routingtable.o $(TEST)unit-test.c
+	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o $(TEST)unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
 clean :
 	rm -f *.o

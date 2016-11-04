@@ -8,8 +8,8 @@
    */
 
 
-#include "ne.h"
-#include "router.h"
+#include "../src/ne.h"
+#include "../src/router.h"
 
 #define MyAssert(X,Y) ASSERT(__FILE__,__FUNCTION__,__LINE__,X,Y)
 
@@ -35,7 +35,7 @@ int TestInitRT() {
     nbrs.nbrcost[0].cost = 4;
     nbrs.nbrcost[1].nbr = 2;
     nbrs.nbrcost[1].cost = 3;
-    
+
     InitRoutingTbl (&nbrs, MyRouterId);
     ConvertTabletoPkt(&resultpkt, MyRouterId);
     MyAssert(resultpkt.no_routes==3,"Incorrect number of routes after initializing the routing table");

@@ -33,7 +33,7 @@
 *.su
 
 # Project specific gitignore
-*.txt
+*.log
 *.conf
 example
 

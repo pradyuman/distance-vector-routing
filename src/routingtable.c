@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "ne.h"
 #include "router.h"
 
@@ -56,4 +57,18 @@ void ConvertTabletoPkt(struct pkt_RT_UPDATE *UpdatePacketToSend, int myID) {
   for (i = 0; i < numRoutes; i++) {
     UpdatePacketToSend->route[i] = routingTable[i];
   }
+}
+
+void PrintRoutes(FILE* Logfile, int myID) {
+  fprintf(Logfile, "Routing Table:\n");
+
+  int i;
+  for (i = 0; i < numRoutes; i++) {
+    fprintf(Logfile,"R%d -> R%d: R%d, %d\n", myID,
+            routingTable[i].dest_id,
+            routingTable[i].next_hop,
+            routingTable[i].cost);
+  }
+
+  fflush(Logfile);
 }

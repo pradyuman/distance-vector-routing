@@ -20,6 +20,13 @@ int main(int argc, char **argv) {
 
   char *eptr;
   int id = strtol(argv[1], &eptr, 10);
+
+  // Setup logging
+  char logfilename[12];
+  sprintf(logfilename, "router%d.log", id);
+  FILE* logfile = fopen(logfilename, "w");
+
+  // Initialize Router
   struct pkt_INIT_REQUEST initReq;
   struct sockaddr_in neClient;
 
@@ -34,6 +41,9 @@ int main(int argc, char **argv) {
          (struct sockaddr *)&neClient, neSize);
 
   struct pkt_INIT_RESPONSE initRes;
-  int initResSize = recvfrom(ne, &initRes, sizeof(initRes), 0, NULL, NULL);
+  recvfrom(ne, &initRes, sizeof(initRes), 0, NULL, NULL);
+  ntoh_pkt_INIT_RESPONSE(&initRes);
+  InitRoutingTbl(&initRes, id);
+  PrintRoutes(logfile, id);
   return 0;
 }
