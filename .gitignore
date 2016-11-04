@@ -31,3 +31,9 @@
 # Debug files
 *.dSYM/
 *.su
+
+# Project specific gitignore
+*.txt
+*.conf
+example
+
