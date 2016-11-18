@@ -11,13 +11,15 @@
 #define ERR -1
 
 int getDirectCost(int);
-int createPeriodicTimer(int);
-struct sockaddr_in createNeClient(char*, char*);
+int createTimer(int);
+int setTimer(int, int);
+struct sockaddr_in createClient(char*, char*);
 int updateSockset(int*, fd_set*, int);
 void initRouter(int, struct sockaddr_in);
-void updateRoutes(int);
+void updateRoutes(int, int);
 void sendUpdates(int, struct sockaddr_in);
 
+FILE* logfile;
 unsigned int id;
 unsigned int numNbrs;
 struct nbr_cost initState[MAX_ROUTERS];
@@ -33,7 +35,7 @@ int main(int argc, char **argv) {
   // Setup logging
   char logfilename[12];
   sprintf(logfilename, "router%d.log", id);
-  FILE* logfile = fopen(logfilename, "w");
+  logfile = fopen(logfilename, "w");
 
   int ne_fd = socket(AF_INET, SOCK_DGRAM, 0);
   if (ne_fd < 0) {
@@ -41,24 +43,29 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  struct sockaddr_in neClient = createNeClient(argv[2], argv[3]);
+  struct sockaddr_in neClient = createClient(argv[2], argv[3]);
 
   // Initialize Router
   initRouter(ne_fd, neClient);
-  PrintRoutes(logfile, id);
 
-  int update_fd = createPeriodicTimer(UPDATE_INTERVAL);
-  //converge_fd = createPeriodicTimer(CONVERGE_TIMEOUT);
+  int update_fd = createTimer(UPDATE_INTERVAL);
+  int converge_fd = createTimer(CONVERGE_TIMEOUT);
 
   fd_set sockset;
-  int clients[2] = { ne_fd, update_fd };
+  int clients[3] = { ne_fd, update_fd, converge_fd };
   while (1) {
-    select(updateSockset(clients, &sockset, 2) + 1, &sockset, NULL, NULL, NULL);
+    select(updateSockset(clients, &sockset, 3) + 1, &sockset, NULL, NULL, NULL);
 
-    if (FD_ISSET(ne_fd, &sockset))
-      updateRoutes(ne_fd);
-    else if (FD_ISSET(update_fd, &sockset))
+    if (FD_ISSET(ne_fd, &sockset)) {
+      updateRoutes(ne_fd, converge_fd);
+    } else if (FD_ISSET(update_fd, &sockset)) {
       sendUpdates(ne_fd, neClient);
+      setTimer(update_fd, UPDATE_INTERVAL);
+    } else if (FD_ISSET(converge_fd, &sockset)) {
+      printf("x:Converged\n");
+      fprintf(logfile, "x:Converged\n");
+      setTimer(converge_fd, CONVERGE_TIMEOUT);
+    }
 
   }
 
@@ -74,23 +81,32 @@ int getDirectCost(int nbr_id) {
   return ERR;
 }
 
-int createPeriodicTimer(int sec) {
-  struct itimerspec timeout;
-
+int createTimer(int sec) {
   // Use TFD_NONBLOCK instead of 0 for versions above 2.6.27
   int fd = timerfd_create(CLOCK_MONOTONIC, 0);
   if (fd < 0)
     return ERR;
+
+  if (setTimer(fd, sec) < 0)
+    return ERR;
+
+  return fd;
+}
+
+int setTimer(int fd, int sec) {
+  struct itimerspec timeout;
 
   timeout.it_value.tv_sec = sec;
   timeout.it_value.tv_nsec = 0;
   timeout.it_interval.tv_sec = 0;
   timeout.it_interval.tv_nsec = 0;
 
-  if (timerfd_settime(fd, 0, &timeout, NULL))
-    fprintf(stderr, "[createPeriodicTimer:71] Failed to arm timer.\n");
+  if (timerfd_settime(fd, 0, &timeout, NULL)) {
+    fprintf(stderr, "[setTimer:103] Failed to arm timer.\n");
+    return ERR;
+  }
 
-  return fd;
+  return 0;
 }
 
 int updateSockset(int *clients, fd_set *sockset, int len) {
@@ -104,14 +120,14 @@ int updateSockset(int *clients, fd_set *sockset, int len) {
   return maxfd;
 }
 
-struct sockaddr_in createNeClient(char *neHostname, char *nePort) {
-  struct sockaddr_in neClient;
-  memset(&neClient, 0, sizeof(neClient));
-  neClient.sin_family = AF_INET;
-  neClient.sin_port = htons((unsigned short)strtol(nePort, NULL, 10));
-  inet_aton(neHostname, &neClient.sin_addr);
+struct sockaddr_in createClient(char *hostname, char *port) {
+  struct sockaddr_in client;
+  memset(&client, 0, sizeof(client));
+  client.sin_family = AF_INET;
+  client.sin_port = htons((unsigned short)strtol(port, NULL, 10));
+  inet_aton(hostname, &client.sin_addr);
 
-  return neClient;
+  return client;
 }
 
 void initRouter(int ne_fd, struct sockaddr_in neClient) {
@@ -131,20 +147,30 @@ void initRouter(int ne_fd, struct sockaddr_in neClient) {
   numNbrs = initRes.no_nbr;
   for (i = 0; i < numNbrs; i++)
     initState[i] = initRes.nbrcost[i];
+
+  PrintRoutes(logfile, id);
 }
 
-void updateRoutes(int ne_fd) {
+void updateRoutes(int ne_fd, int converge_fd) {
   struct pkt_RT_UPDATE updateRes;
   recvfrom(ne_fd, &updateRes, sizeof(updateRes), 0, NULL, NULL);
   ntoh_pkt_RT_UPDATE(&updateRes);
-  UpdateRoutes(&updateRes,
-               getDirectCost(updateRes.sender_id),
-               id);
+
+  int directCost = getDirectCost(updateRes.sender_id);
+  printf("Recieve RT_UPDATE from R%d with cost %d containing %d routes\n",
+         updateRes.sender_id, directCost, updateRes.no_routes);
+
+  if (UpdateRoutes(&updateRes, directCost, id)) {
+    PrintRoutes(logfile, id);
+    setTimer(converge_fd, CONVERGE_TIMEOUT);
+  }
+
 }
 
 void sendUpdates(int ne_fd, struct sockaddr_in neClient) {
   int i;
   struct pkt_RT_UPDATE updatePkt;
+
   for (i = 0; i < numNbrs; i++) {
     updatePkt.dest_id = initState[i].nbr;
     ConvertTabletoPkt(&updatePkt, id);

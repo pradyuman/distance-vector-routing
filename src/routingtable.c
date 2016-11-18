@@ -23,31 +23,37 @@ void InitRoutingTbl(struct pkt_INIT_RESPONSE *res, int myID) {
 }
 
 int UpdateRoutes(struct pkt_RT_UPDATE *p, int costToNbr, int myID) {
-  int i, j;
+  int i, j, changed = 0;
   for (i = 0; i < p->no_routes; i++) {
-    int hit = 0;
     int nr_dest_id = p->route[i].dest_id;
     int nr_next_hop = p->route[i].next_hop;
     int nr_cost = p->route[i].cost;
+
+    // Find id in routing table
     for (j = 0; j < numRoutes; j++) {
       if (nr_dest_id == routingTable[j].dest_id) {
         int nr_total_cost = costToNbr + nr_cost;
-        if (routingTable[j].next_hop == p->sender_id
-            || (routingTable[j].cost > nr_total_cost && nr_next_hop != myID)) {
+        int lessCost = routingTable[j].cost > nr_total_cost;
+        int differentCost = routingTable[j].cost != nr_total_cost;
+        int splitHorizon = nr_next_hop != myID;
+        int forcedUpdate = routingTable[j].next_hop == p->sender_id && differentCost;
+        if (forcedUpdate || (lessCost && splitHorizon)) {
           updateEntry(j, nr_dest_id, p->sender_id, nr_total_cost);
+          changed = 1;
         }
-
-        hit = 1;
         break;
       }
     }
 
-    if (!hit) {
+    // Not in routing table
+    if (j == numRoutes) {
       numRoutes++;
       updateEntry(j, p->route[i].dest_id, p->sender_id, costToNbr + p->route[i].cost);
+      changed = 1;
     }
   }
-  return 0;
+
+  return changed;
 }
 
 void ConvertTabletoPkt(struct pkt_RT_UPDATE *UpdatePacketToSend, int myID) {
