@@ -8,7 +8,7 @@
 
 int main(int argc, char **argv) {
   if (argc < 5) {
-    fprintf(stderr, "USAGE ./router <router id> <ne hostname> <ne UDP port> <router UDP port>");
+    fprintf(stderr, "USAGE ./router <router id> <ne hostname> <ne UDP port> <router UDP port>\n");
     return 1;
   }
 

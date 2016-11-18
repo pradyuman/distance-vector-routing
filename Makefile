@@ -17,21 +17,33 @@ ifeq ($(OS), SunOS)
 	SOCKETLIB = -lsocket
 endif
 
+# Network Emulator port
+NE = 9999
+
 all : router
 
-endian.o   :   $(SRC)ne.h $(SRC)endian.c
+endian.o: $(SRC)ne.h $(SRC)endian.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c $(SRC)endian.c
 
-routingtable.o   :   $(SRC)ne.h $(SRC)routingtable.c
+routingtable.o: $(SRC)ne.h $(SRC)routingtable.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c $(SRC)routingtable.c
 
-router  :   endian.o routingtable.o $(SRC)router.c
+router: endian.o routingtable.o $(SRC)router.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) endian.o routingtable.o $(SRC)router.c -o router -lnsl $(SOCKETLIB)
 
-unit-test  : routingtable.o $(TEST)unit-test.c
+unit-test: routingtable.o $(TEST)unit-test.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o $(TEST)unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
-clean :
+run:
+	./router 0 localhost $(NE) 9000 &
+	./router 1 localhost $(NE) 9001 &
+	./router 2 localhost $(NE) 9002 &
+	./router 3 localhost $(NE) 9003 &
+
+run-ne:
+	bin/ne $(NE) bin/4_routers.conf
+
+clean:
 	rm -f *.o
 	rm -f router
 	rm -f unit-test
