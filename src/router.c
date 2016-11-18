@@ -9,6 +9,7 @@
 #include "router.h"
 
 #define ERR -1
+#define NUM_CLIENTS 4
 
 int getDirectCost(int);
 int createTimer(int);
@@ -50,11 +51,13 @@ int main(int argc, char **argv) {
 
   int update_fd = createTimer(UPDATE_INTERVAL);
   int converge_fd = createTimer(CONVERGE_TIMEOUT);
+  int seconds_fd = createTimer(1);
 
+  int seconds = 0;
   fd_set sockset;
-  int clients[3] = { ne_fd, update_fd, converge_fd };
+  int clients[NUM_CLIENTS] = { ne_fd, update_fd, converge_fd, seconds_fd };
   while (1) {
-    select(updateSockset(clients, &sockset, 3) + 1, &sockset, NULL, NULL, NULL);
+    select(updateSockset(clients, &sockset, NUM_CLIENTS) + 1, &sockset, NULL, NULL, NULL);
 
     if (FD_ISSET(ne_fd, &sockset)) {
       updateRoutes(ne_fd, converge_fd);
@@ -62,11 +65,13 @@ int main(int argc, char **argv) {
       sendUpdates(ne_fd, neClient);
       setTimer(update_fd, UPDATE_INTERVAL);
     } else if (FD_ISSET(converge_fd, &sockset)) {
-      printf("x:Converged\n");
-      fprintf(logfile, "x:Converged\n");
-      setTimer(converge_fd, CONVERGE_TIMEOUT);
+      fprintf(logfile, "%d:Converged\n", seconds);
+      fflush(logfile);
+      setTimer(converge_fd, 0);
+    } else if (FD_ISSET(seconds_fd, &sockset)) {
+      seconds++;
+      setTimer(seconds_fd, 1);
     }
-
   }
 
   return 0;
@@ -156,11 +161,7 @@ void updateRoutes(int ne_fd, int converge_fd) {
   recvfrom(ne_fd, &updateRes, sizeof(updateRes), 0, NULL, NULL);
   ntoh_pkt_RT_UPDATE(&updateRes);
 
-  int directCost = getDirectCost(updateRes.sender_id);
-  printf("Recieve RT_UPDATE from R%d with cost %d containing %d routes\n",
-         updateRes.sender_id, directCost, updateRes.no_routes);
-
-  if (UpdateRoutes(&updateRes, directCost, id)) {
+  if (UpdateRoutes(&updateRes, getDirectCost(updateRes.sender_id), id)) {
     PrintRoutes(logfile, id);
     setTimer(converge_fd, CONVERGE_TIMEOUT);
   }

@@ -35,7 +35,10 @@ unit-test: routingtable.o $(TEST)unit-test.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o $(TEST)unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
 run:
-	./router $(R) localhost $(NE) 900$(R)
+	rm router$(R).log
+	./router $(R) localhost $(NE) 900$(R) &
+	sleep 1
+	tail -f router$(R).log
 
 runall:
 	./router 0 localhost $(NE) 9000 &
@@ -49,4 +52,4 @@ run-ne:
 clean:
 	rm -f *.o
 	rm -f router
-	rm -f unit-test
+	rm -f *log
