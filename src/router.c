@@ -11,14 +11,15 @@
 #define ERR -1
 #define NUM_FDS 4
 
-int getDirectCost(int);
+struct sockaddr_in createClient(char*, char*);
 int createTimer(int);
 int setTimer(int, int);
-struct sockaddr_in createClient(char*, char*);
 int updateSockset(int*, fd_set*);
 void initRouter(int, struct sockaddr_in);
 void updateRoutes(int, int);
 void sendUpdates(int, struct sockaddr_in);
+struct addrinfo *getAddrInfo(char*, int);
+int bindListener(struct addrinfo*);
 
 FILE* logfile;
 unsigned int id;
@@ -39,8 +40,8 @@ int main(int argc, char **argv) {
   sprintf(logfilename, "router%d.log", id);
   logfile = fopen(logfilename, "w");
 
-  int ne_fd = socket(AF_INET, SOCK_DGRAM, 0);
-  if (ne_fd < 0) {
+  int server_fd = bindListener(getAddrInfo(argv[4], SOCK_DGRAM));
+  if (server_fd < 0) {
     fprintf(stderr, "[main:18:socket] Failed to initialize socket (UDP)\n");
     return 2;
   }
@@ -48,7 +49,7 @@ int main(int argc, char **argv) {
   struct sockaddr_in neClient = createClient(argv[2], argv[3]);
 
   // Initialize Router
-  initRouter(ne_fd, neClient);
+  initRouter(server_fd, neClient);
 
   int update_fd = createTimer(UPDATE_INTERVAL);
   int converge_fd = createTimer(CONVERGE_TIMEOUT);
@@ -56,15 +57,15 @@ int main(int argc, char **argv) {
 
   int seconds = 0;
   fd_set sockset;
-  int fds[NUM_FDS] = { ne_fd, update_fd, converge_fd, seconds_fd };
+  int fds[NUM_FDS] = { server_fd, update_fd, converge_fd, seconds_fd };
   while (1) {
     select(updateSockset(fds, &sockset) + 1, &sockset, NULL, NULL, NULL);
 
-    if (FD_ISSET(ne_fd, &sockset))
-      updateRoutes(ne_fd, converge_fd);
+    if (FD_ISSET(server_fd, &sockset))
+      updateRoutes(server_fd, converge_fd);
 
     if (FD_ISSET(update_fd, &sockset)) {
-      sendUpdates(ne_fd, neClient);
+      sendUpdates(server_fd, neClient);
       setTimer(update_fd, UPDATE_INTERVAL);
     }
 
@@ -90,6 +91,16 @@ int main(int argc, char **argv) {
   }
 
   return 0;
+}
+
+struct sockaddr_in createClient(char *hostname, char *port) {
+  struct sockaddr_in client;
+  memset(&client, 0, sizeof(client));
+  client.sin_family = AF_INET;
+  client.sin_port = htons((unsigned short)strtol(port, NULL, 10));
+  inet_aton(hostname, &client.sin_addr);
+
+  return client;
 }
 
 int getIdIndex(int nbr_id) {
@@ -148,25 +159,15 @@ int updateSockset(int *clients, fd_set *sockset) {
   return maxfd;
 }
 
-struct sockaddr_in createClient(char *hostname, char *port) {
-  struct sockaddr_in client;
-  memset(&client, 0, sizeof(client));
-  client.sin_family = AF_INET;
-  client.sin_port = htons((unsigned short)strtol(port, NULL, 10));
-  inet_aton(hostname, &client.sin_addr);
-
-  return client;
-}
-
-void initRouter(int ne_fd, struct sockaddr_in neClient) {
+void initRouter(int server_fd, struct sockaddr_in neClient) {
   struct pkt_INIT_REQUEST initReq;
   initReq.router_id = htonl(id);
-  sendto(ne_fd, &initReq, sizeof(initReq), 0,
+  sendto(server_fd, &initReq, sizeof(initReq), 0,
          (struct sockaddr *)&neClient, (socklen_t)sizeof(neClient));
 
   // Parse Initialization Response
   struct pkt_INIT_RESPONSE initRes;
-  recvfrom(ne_fd, &initRes, sizeof(initRes), 0, NULL, NULL);
+  recvfrom(server_fd, &initRes, sizeof(initRes), 0, NULL, NULL);
   ntoh_pkt_INIT_RESPONSE(&initRes);
   InitRoutingTbl(&initRes, id);
 
@@ -181,9 +182,9 @@ void initRouter(int ne_fd, struct sockaddr_in neClient) {
   PrintRoutes(logfile, id);
 }
 
-void updateRoutes(int ne_fd, int converge_fd) {
+void updateRoutes(int server_fd, int converge_fd) {
   struct pkt_RT_UPDATE updateRes;
-  recvfrom(ne_fd, &updateRes, sizeof(updateRes), 0, NULL, NULL);
+  recvfrom(server_fd, &updateRes, sizeof(updateRes), 0, NULL, NULL);
   ntoh_pkt_RT_UPDATE(&updateRes);
 
   int i = getIdIndex(updateRes.sender_id);
@@ -194,7 +195,7 @@ void updateRoutes(int ne_fd, int converge_fd) {
   }
 }
 
-void sendUpdates(int ne_fd, struct sockaddr_in neClient) {
+void sendUpdates(int server_fd, struct sockaddr_in neClient) {
   int i;
   struct pkt_RT_UPDATE updatePkt;
 
@@ -202,7 +203,60 @@ void sendUpdates(int ne_fd, struct sockaddr_in neClient) {
     updatePkt.dest_id = initState[i].nbr;
     ConvertTabletoPkt(&updatePkt, id);
     hton_pkt_RT_UPDATE(&updatePkt);
-    sendto(ne_fd, &updatePkt, sizeof(updatePkt), 0,
+    sendto(server_fd, &updatePkt, sizeof(updatePkt), 0,
            (struct sockaddr *)&neClient, (socklen_t)sizeof(neClient));
   }
 }
+
+// Get addr information (used to bindListener)
+struct addrinfo *getAddrInfo(char *port, int socktype) {
+  int r;
+  struct addrinfo hints, *getaddrinfo_res;
+
+  // Setup hints
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_flags = AI_PASSIVE;
+  hints.ai_socktype = socktype;
+  if ((r = getaddrinfo(NULL, port, &hints, &getaddrinfo_res))) {
+    fprintf(stderr, "[getAddrInfo:21:getaddrinfo] %s\n", gai_strerror(r));
+    return NULL;
+  }
+
+  return getaddrinfo_res;
+}
+
+// Bind Listener
+int bindListener(struct addrinfo *info) {
+  if (info == NULL) return -1;
+
+  int serverfd;
+  for (;info != NULL; info = info->ai_next) {
+    if ((serverfd = socket(info->ai_family,
+                           info->ai_socktype,
+                           info->ai_protocol)) < 0) {
+      perror("[bindListener:35:socket]");
+      continue;
+    }
+
+    int opt = 1;
+    if (setsockopt(serverfd, SOL_SOCKET, SO_REUSEADDR,
+                   &opt, sizeof(int)) < 0) {
+      perror("[bindListener:43:setsockopt]");
+      return -1;
+    }
+
+    if (bind(serverfd, info->ai_addr, info->ai_addrlen) < 0) {
+      close(serverfd);
+      perror("[bindListener:49:bind]");
+      continue;
+    }
+
+    freeaddrinfo(info);
+    return serverfd;
+  }
+
+  freeaddrinfo(info);
+  return -1;
+}
+

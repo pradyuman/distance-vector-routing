@@ -47,7 +47,7 @@ runall:
 	./router 3 localhost $(NE) 9003 &
 
 run-ne:
-	bin/ne $(NE) bin/4_routers.conf
+	bin/ne $(NE) $(FILE)
 
 clean:
 	rm -f *.o

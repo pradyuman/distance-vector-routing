@@ -33,7 +33,7 @@ int UpdateRoutes(struct pkt_RT_UPDATE *p, int costToNbr, int myID) {
     // Find id in routing table
     for (j = 0; j < numRoutes; j++) {
       if (nr_dest_id == routingTable[j].dest_id) {
-        int nr_total_cost = nr_cost == INFINITY ? nr_cost : costToNbr + nr_cost;
+        int nr_total_cost = costToNbr + nr_cost >= INFINITY ? INFINITY : costToNbr + nr_cost;
         int lessCost = routingTable[j].cost > nr_total_cost;
         int differentCost = routingTable[j].cost != nr_total_cost;
         int splitHorizon = nr_next_hop != myID;
