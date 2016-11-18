@@ -9,13 +9,13 @@
 #include "router.h"
 
 #define ERR -1
-#define NUM_CLIENTS 4
+#define NUM_FDS 4
 
 int getDirectCost(int);
 int createTimer(int);
 int setTimer(int, int);
 struct sockaddr_in createClient(char*, char*);
-int updateSockset(int*, fd_set*, int);
+int updateSockset(int*, fd_set*);
 void initRouter(int, struct sockaddr_in);
 void updateRoutes(int, int);
 void sendUpdates(int, struct sockaddr_in);
@@ -24,6 +24,7 @@ FILE* logfile;
 unsigned int id;
 unsigned int numNbrs;
 struct nbr_cost initState[MAX_ROUTERS];
+int failureTimeouts[MAX_ROUTERS];
 
 int main(int argc, char **argv) {
   if (argc < 5) {
@@ -55,33 +56,47 @@ int main(int argc, char **argv) {
 
   int seconds = 0;
   fd_set sockset;
-  int clients[NUM_CLIENTS] = { ne_fd, update_fd, converge_fd, seconds_fd };
+  int fds[NUM_FDS] = { ne_fd, update_fd, converge_fd, seconds_fd };
   while (1) {
-    select(updateSockset(clients, &sockset, NUM_CLIENTS) + 1, &sockset, NULL, NULL, NULL);
+    select(updateSockset(fds, &sockset) + 1, &sockset, NULL, NULL, NULL);
 
-    if (FD_ISSET(ne_fd, &sockset)) {
+    if (FD_ISSET(ne_fd, &sockset))
       updateRoutes(ne_fd, converge_fd);
-    } else if (FD_ISSET(update_fd, &sockset)) {
+
+    if (FD_ISSET(update_fd, &sockset)) {
       sendUpdates(ne_fd, neClient);
       setTimer(update_fd, UPDATE_INTERVAL);
-    } else if (FD_ISSET(converge_fd, &sockset)) {
+    }
+
+    if (FD_ISSET(converge_fd, &sockset)) {
       fprintf(logfile, "%d:Converged\n", seconds);
       fflush(logfile);
       setTimer(converge_fd, 0);
-    } else if (FD_ISSET(seconds_fd, &sockset)) {
+    }
+
+    if (FD_ISSET(seconds_fd, &sockset)) {
       seconds++;
       setTimer(seconds_fd, 1);
+    }
+
+    int i;
+    for (i = 0; i < numNbrs; i++) {
+      if (FD_ISSET(failureTimeouts[i], &sockset)) {
+        UninstallRoutesOnNbrDeath(initState[i].nbr);
+        PrintRoutes(logfile, id);
+        setTimer(failureTimeouts[i], 0);
+      }
     }
   }
 
   return 0;
 }
 
-int getDirectCost(int nbr_id) {
+int getIdIndex(int nbr_id) {
   int i;
   for (i = 0; i < numNbrs; i++) {
     if (initState[i].nbr == nbr_id)
-      return initState[i].cost;
+      return i;
   }
   return ERR;
 }
@@ -114,14 +129,22 @@ int setTimer(int fd, int sec) {
   return 0;
 }
 
-int updateSockset(int *clients, fd_set *sockset, int len) {
+int updateSockset(int *clients, fd_set *sockset) {
   int i, maxfd = 0;
   FD_ZERO(sockset);
-  for (i = 0; i < len; i++) {
+
+  for (i = 0; i < NUM_FDS; i++) {
     FD_SET(clients[i], sockset);
     if (clients[i] > maxfd)
       maxfd = clients[i];
   }
+
+  for (i = 0; i < numNbrs; i++) {
+    FD_SET(failureTimeouts[i], sockset);
+    if (failureTimeouts[i] > maxfd)
+      maxfd = failureTimeouts[i];
+  }
+
   return maxfd;
 }
 
@@ -150,8 +173,10 @@ void initRouter(int ne_fd, struct sockaddr_in neClient) {
   // Initialize Router Globals
   int i;
   numNbrs = initRes.no_nbr;
-  for (i = 0; i < numNbrs; i++)
+  for (i = 0; i < numNbrs; i++) {
     initState[i] = initRes.nbrcost[i];
+    failureTimeouts[i] = createTimer(FAILURE_DETECTION);
+  }
 
   PrintRoutes(logfile, id);
 }
@@ -161,11 +186,12 @@ void updateRoutes(int ne_fd, int converge_fd) {
   recvfrom(ne_fd, &updateRes, sizeof(updateRes), 0, NULL, NULL);
   ntoh_pkt_RT_UPDATE(&updateRes);
 
-  if (UpdateRoutes(&updateRes, getDirectCost(updateRes.sender_id), id)) {
+  int i = getIdIndex(updateRes.sender_id);
+  setTimer(failureTimeouts[i], FAILURE_DETECTION);
+  if (UpdateRoutes(&updateRes, initState[i].cost, id)) {
     PrintRoutes(logfile, id);
     setTimer(converge_fd, CONVERGE_TIMEOUT);
   }
-
 }
 
 void sendUpdates(int ne_fd, struct sockaddr_in neClient) {

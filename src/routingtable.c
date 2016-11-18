@@ -8,7 +8,8 @@ struct route_entry routingTable[MAX_ROUTERS];
 void updateEntry(int i, int dest_id, int next_hop, int cost) {
   routingTable[i].dest_id = dest_id;
   routingTable[i].next_hop = next_hop;
-  routingTable[i].cost = cost;
+  if (cost <= INFINITY)
+    routingTable[i].cost = cost;
 }
 
 void InitRoutingTbl(struct pkt_INIT_RESPONSE *res, int myID) {
@@ -32,7 +33,7 @@ int UpdateRoutes(struct pkt_RT_UPDATE *p, int costToNbr, int myID) {
     // Find id in routing table
     for (j = 0; j < numRoutes; j++) {
       if (nr_dest_id == routingTable[j].dest_id) {
-        int nr_total_cost = costToNbr + nr_cost;
+        int nr_total_cost = nr_cost == INFINITY ? nr_cost : costToNbr + nr_cost;
         int lessCost = routingTable[j].cost > nr_total_cost;
         int differentCost = routingTable[j].cost != nr_total_cost;
         int splitHorizon = nr_next_hop != myID;

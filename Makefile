@@ -35,7 +35,7 @@ unit-test: routingtable.o $(TEST)unit-test.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o $(TEST)unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
 run:
-	rm router$(R).log
+	rm -f router$(R).log
 	./router $(R) localhost $(NE) 900$(R) &
 	sleep 1
 	tail -f router$(R).log
