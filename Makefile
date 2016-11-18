@@ -35,6 +35,9 @@ unit-test: routingtable.o $(TEST)unit-test.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o $(TEST)unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
 run:
+	./router $(R) localhost $(NE) 900$(R)
+
+runall:
 	./router 0 localhost $(NE) 9000 &
 	./router 1 localhost $(NE) 9001 &
 	./router 2 localhost $(NE) 9002 &

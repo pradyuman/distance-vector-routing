@@ -18,9 +18,8 @@ void InitRoutingTbl(struct pkt_INIT_RESPONSE *res, int myID) {
   updateEntry(0, myID, myID, 0);
 
   int i;
-  for (i = 1; i < numRoutes; i++) {
+  for (i = 1; i < numRoutes; i++)
     updateEntry(i, res->nbrcost[i-1].nbr, res->nbrcost[i-1].nbr, res->nbrcost[i-1].cost);
-  }
 }
 
 int UpdateRoutes(struct pkt_RT_UPDATE *p, int costToNbr, int myID) {
@@ -37,7 +36,9 @@ int UpdateRoutes(struct pkt_RT_UPDATE *p, int costToNbr, int myID) {
             || (routingTable[j].cost > nr_total_cost && nr_next_hop != myID)) {
           updateEntry(j, nr_dest_id, p->sender_id, nr_total_cost);
         }
-        hit = 1; break;
+
+        hit = 1;
+        break;
       }
     }
 
@@ -54,9 +55,8 @@ void ConvertTabletoPkt(struct pkt_RT_UPDATE *UpdatePacketToSend, int myID) {
   UpdatePacketToSend->no_routes = numRoutes;
 
   int i;
-  for (i = 0; i < numRoutes; i++) {
+  for (i = 0; i < numRoutes; i++)
     UpdatePacketToSend->route[i] = routingTable[i];
-  }
 }
 
 void PrintRoutes(FILE* Logfile, int myID) {
@@ -71,4 +71,12 @@ void PrintRoutes(FILE* Logfile, int myID) {
   }
 
   fflush(Logfile);
+}
+
+void UninstallRoutesOnNbrDeath(int deadNbr) {
+  int i;
+  for (i = 0; i < numRoutes; i++) {
+    if (routingTable[i].next_hop == deadNbr)
+      routingTable[i].cost = INFINITY;
+  }
 }
